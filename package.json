@@ -1,0 +1,26 @@
+{
+  "name": "tslint-sql",
+  "version": "0.0.1",
+  "private": true,
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^12.0.10",
+    "pg-query-native": "^1.2.0"
+  },
+  "devDependencies": {
+    "indent-string": "^4.0.0",
+    "outdent": "^0.7.0",
+    "tslint": "^5.18.0",
+    "typescript": "^3.5.2"
+  },
+  "scripts": {
+    "compile": "tsc",
+    "generate": "node scripts/generate.js",
+    "docker": "yarn docker:build && yarn docker:run",
+    "docker:build": "docker build -t tslint-sql-dev docker",
+    "docker:run": "docker run -it --rm -v /c/code/tslint-sql:/src --name tslint-sql-dev tslint-sql-dev",
+    "docker:attach": "docker exec -it tslint-sql-dev bash",
+    "test:rules": "tslint --test test/rules/**/tslint.json"
+  }
+}
