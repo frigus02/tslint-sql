@@ -9,7 +9,8 @@ import {
   getParamMapForDelete,
   getParamMapForInsert,
   getParamMapForSelect,
-  getParamMapForUpdate
+  getParamMapForUpdate,
+  Column
 } from "./params";
 import { notSupported } from "./utils";
 
@@ -22,7 +23,7 @@ export class ParseError extends Error {
   }
 }
 
-export const analyze = (query: string) => {
+export const analyze = (query: string): Map<number, Column> => {
   const result = parse(query);
   if (result.error) {
     throw new ParseError(result.error);
@@ -38,7 +39,7 @@ export const analyze = (query: string) => {
       return getParamMapForDelete(stmt);
     } else {
       notSupported("statement", stmt);
-      return new Map<number, string>();
+      return new Map<number, Column>();
     }
   } else {
     throw new Error("Got no result");

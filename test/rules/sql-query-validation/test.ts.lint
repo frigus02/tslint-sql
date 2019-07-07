@@ -87,7 +87,7 @@ export const getUserByMetadata = (userId: string, metadata: string) => sql(
     beneficiaries
   WHERE
     user_id = ${userId}
-                ~~~~~~  [Types: Column beneficiaries.user_id is type undefined but got type string]
+                ~~~~~~  [Types: Cannot find type for column beneficiaries.user_id in schema]
   AND
     details ->> 'metadata' = ${metadata}
 `;

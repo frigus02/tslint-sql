@@ -1,42 +1,109 @@
+import { readFileSync } from "fs";
 import * as ts from "typescript";
 import * as Lint from "tslint";
 import { analyze, ParseError } from "../analysis";
+import { Column } from "../analysis/params";
 
-const SCHEMA: any = {
-  payments: {
-    payment_id: "string",
-    user_id: "number",
-    amount: "number",
-    description: "string",
-    status: "string",
-    created_at: "Date",
-    updated_at: "Date"
-  },
-  users: {
-    user_id: "number",
-    name: "string",
-    details: "object"
-  }
-};
+const OPTION_PATH_TO_SCHEMA_JSON = "path-to-schema-json";
+const OPTION_DEFAULT_SCHEMA_NAME = "default-schema-name";
+
+interface Options {
+  pathToSchemaJson: string;
+  defaultSchemaName: string;
+}
+
+interface Schema {
+  [schema: string]:
+    | {
+        [table: string]:
+          | {
+              [column: string]: string | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
+}
 
 export class Rule extends Lint.Rules.TypedRule {
   public static metadata: Lint.IRuleMetadata = {
     ruleName: "sql-queries",
     type: "functionality",
     description: "Checks SQL queries for syntax and types",
-    optionsDescription: "",
-    options: {},
+    optionsDescription: Lint.Utils.dedent`
+      In order to validate types in the SQL queries, you have to tell this rule
+      about your database schema. Create a JSON and specify the path to it in
+      the \`${OPTION_PATH_TO_SCHEMA_JSON}\` option.
+
+      In case your database uses a different default schema name, specify it
+      with the option \`${OPTION_DEFAULT_SCHEMA_NAME}\`.`,
+    options: {
+      type: "object",
+      properties: {
+        [OPTION_DEFAULT_SCHEMA_NAME]: {
+          type: "string"
+        },
+        [OPTION_PATH_TO_SCHEMA_JSON]: {
+          type: "string"
+        }
+      },
+      additionalProperties: false
+    },
+    optionExamples: [
+      {
+        options: {
+          [OPTION_PATH_TO_SCHEMA_JSON]: "./db-schema.json"
+        }
+      },
+      {
+        options: {
+          [OPTION_PATH_TO_SCHEMA_JSON]: "./db-schema.json",
+          [OPTION_DEFAULT_SCHEMA_NAME]: "public"
+        }
+      }
+    ],
     typescriptOnly: true
   };
 
-  public static FAILURE_PREFIX_PARSE = "Parse: ";
-  public static FAILURE_PREFIX_TYPES = "Types: ";
+  public static FAILURE_STRING_SCHEMA_JSON(
+    schemaJsonPath: string,
+    error: string
+  ): string {
+    return `Options: could not read schema JSON file from ${schemaJsonPath}: ${error}`;
+  }
+
+  public static FAILURE_STRING_PARSE(message: string): string {
+    return `Parse: ${message}`;
+  }
+
+  public static FAILURE_STRING_TYPE_MISSING(column: string): string {
+    return `Types: Cannot find type for column ${column} in schema`;
+  }
+
+  public static FAILURE_STRING_TYPE_MISMATCH(
+    column: string,
+    expectedType: string,
+    actualType: string
+  ): string {
+    return `Types: Column ${column} is type ${expectedType} but got type ${actualType}`;
+  }
 
   public applyWithProgram(
     sourceFile: ts.SourceFile,
     program: ts.Program
   ): Lint.RuleFailure[] {
-    return this.applyWithFunction(sourceFile, walk, undefined, program);
+    const rawOptions = { ...this.ruleArguments[0] } as {
+      [OPTION_PATH_TO_SCHEMA_JSON]: string;
+      [OPTION_DEFAULT_SCHEMA_NAME]?: string;
+    };
+    return this.applyWithFunction(
+      sourceFile,
+      walk,
+      {
+        pathToSchemaJson: rawOptions[OPTION_PATH_TO_SCHEMA_JSON],
+        defaultSchemaName: rawOptions[OPTION_DEFAULT_SCHEMA_NAME] || "public"
+      },
+      program
+    );
   }
 }
 
@@ -93,7 +160,29 @@ function getTemplate(
   }
 }
 
-function walk(ctx: Lint.WalkContext<void>, program: ts.Program) {
+function readSchemaJson(path: string): Schema {
+  const data = readFileSync(path, "utf8");
+  return JSON.parse(data);
+}
+
+function stringifyColumn(column: Column): string {
+  return [column.schema, column.table, column.column].filter(x => x).join(".");
+}
+
+function walk(ctx: Lint.WalkContext<Options>, program: ts.Program): void {
+  const checker = program.getTypeChecker();
+
+  let schemaJson: Schema;
+  try {
+    schemaJson = readSchemaJson(ctx.options.pathToSchemaJson);
+  } catch (e) {
+    return ctx.addFailure(
+      0,
+      0,
+      Rule.FAILURE_STRING_SCHEMA_JSON(ctx.options.pathToSchemaJson, e.message)
+    );
+  }
+
   return ts.forEachChild(ctx.sourceFile, cb);
 
   function cb(node: ts.Node): void {
@@ -104,7 +193,6 @@ function walk(ctx: Lint.WalkContext<void>, program: ts.Program) {
       const template = getTemplate(node.template, ctx.sourceFile);
       if (!template) return;
 
-      const checker = program.getTypeChecker();
       const types = template.expressions.map(expr =>
         checker.typeToString(checker.getTypeAtLocation(expr.expression))
       );
@@ -124,25 +212,37 @@ function walk(ctx: Lint.WalkContext<void>, program: ts.Program) {
                   0
                 ),
             1,
-            Rule.FAILURE_PREFIX_PARSE + e.message
+            Rule.FAILURE_STRING_PARSE(e.message)
           );
         } else {
           return ctx.addFailureAtNode(
             node.template,
-            Rule.FAILURE_PREFIX_PARSE + e.message
+            Rule.FAILURE_STRING_PARSE(e.message)
           );
         }
       }
 
-      for (const [index, fullColumn] of analysis.entries()) {
-        const [table, column] = fullColumn.split(".");
-        const expectedType = SCHEMA[table] && SCHEMA[table][column];
+      for (const [index, column] of analysis.entries()) {
         const actualType = types[index - 1];
-        if (expectedType !== actualType) {
+
+        const schema = column.schema || ctx.options.defaultSchemaName;
+        const dbSchema = schemaJson[schema];
+        const dbTable = dbSchema && dbSchema[column.table];
+        const expectedType = dbTable && dbTable[column.column];
+
+        if (!expectedType) {
           ctx.addFailureAtNode(
             template.expressions[index - 1].expression,
-            Rule.FAILURE_PREFIX_TYPES +
-              `Column ${fullColumn} is type ${expectedType} but got type ${actualType}`
+            Rule.FAILURE_STRING_TYPE_MISSING(stringifyColumn(column))
+          );
+        } else if (expectedType !== actualType) {
+          ctx.addFailureAtNode(
+            template.expressions[index - 1].expression,
+            Rule.FAILURE_STRING_TYPE_MISMATCH(
+              stringifyColumn(column),
+              expectedType,
+              actualType
+            )
           );
         }
       }

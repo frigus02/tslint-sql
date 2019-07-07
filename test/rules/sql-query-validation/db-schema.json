@@ -1,0 +1,18 @@
+{
+  "public": {
+    "payments": {
+      "payment_id": "string",
+      "user_id": "number",
+      "amount": "number",
+      "description": "string",
+      "status": "string",
+      "created_at": "Date",
+      "updated_at": "Date"
+    },
+    "users": {
+      "user_id": "number",
+      "name": "string",
+      "details": "object"
+    }
+  }
+}

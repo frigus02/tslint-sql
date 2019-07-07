@@ -1,6 +1,11 @@
 {
   "rulesDirectory": ["../../../build/rules"],
   "rules": {
-    "sql-query-validation": true
+    "sql-query-validation": [
+      true,
+      {
+        "path-to-schema-json": "./test/rules/sql-query-validation/db-schema.json"
+      }
+    ]
   }
 }
