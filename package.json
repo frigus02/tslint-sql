@@ -6,6 +6,7 @@
   "license": "MIT",
   "dependencies": {
     "@types/node": "^12.0.10",
+    "pg-promise": "^8.7.5",
     "pg-query-native": "^1.2.0"
   },
   "devDependencies": {
@@ -17,10 +18,8 @@
   "scripts": {
     "compile": "tsc",
     "generate": "node scripts/generate.js",
-    "docker": "yarn docker:build && yarn docker:run",
-    "docker:build": "docker build -t tslint-sql-dev docker",
-    "docker:run": "docker run -it --rm -v /c/code/tslint-sql:/src --name tslint-sql-dev tslint-sql-dev",
-    "docker:attach": "docker exec -it tslint-sql-dev bash",
+    "docker": "docker-compose -f docker/docker-compose.yml up",
+    "docker:attach": "docker exec -it docker_tslint-sql_1 bash",
     "test:rules": "tslint --test test/rules/**/tslint.json"
   }
 }

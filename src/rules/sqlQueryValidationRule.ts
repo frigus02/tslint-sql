@@ -3,6 +3,11 @@ import * as ts from "typescript";
 import * as Lint from "tslint";
 import { analyze, ParseError } from "../analysis";
 import { Column } from "../analysis/params";
+import {
+  DatabaseSchema,
+  SchemaDefinition,
+  TableDefinition
+} from "../schema/schema";
 
 const OPTION_PATH_TO_SCHEMA_JSON = "path-to-schema-json";
 const OPTION_DEFAULT_SCHEMA_NAME = "default-schema-name";
@@ -10,18 +15,6 @@ const OPTION_DEFAULT_SCHEMA_NAME = "default-schema-name";
 interface Options {
   pathToSchemaJson: string;
   defaultSchemaName: string;
-}
-
-interface Schema {
-  [schema: string]:
-    | {
-        [table: string]:
-          | {
-              [column: string]: string | undefined;
-            }
-          | undefined;
-      }
-    | undefined;
 }
 
 export class Rule extends Lint.Rules.TypedRule {
@@ -160,7 +153,7 @@ function getTemplate(
   }
 }
 
-function readSchemaJson(path: string): Schema {
+function readSchemaJson(path: string): DatabaseSchema {
   const data = readFileSync(path, "utf8");
   return JSON.parse(data);
 }
@@ -172,7 +165,7 @@ function stringifyColumn(column: Column): string {
 function walk(ctx: Lint.WalkContext<Options>, program: ts.Program): void {
   const checker = program.getTypeChecker();
 
-  let schemaJson: Schema;
+  let schemaJson: DatabaseSchema;
   try {
     schemaJson = readSchemaJson(ctx.options.pathToSchemaJson);
   } catch (e) {
@@ -235,12 +228,12 @@ function walk(ctx: Lint.WalkContext<Options>, program: ts.Program): void {
             template.expressions[index - 1].expression,
             Rule.FAILURE_STRING_TYPE_MISSING(stringifyColumn(column))
           );
-        } else if (expectedType !== actualType) {
+        } else if (expectedType.type !== actualType) {
           ctx.addFailureAtNode(
             template.expressions[index - 1].expression,
             Rule.FAILURE_STRING_TYPE_MISMATCH(
               stringifyColumn(column),
-              expectedType,
+              expectedType.type,
               actualType
             )
           );
