@@ -3,11 +3,7 @@ import * as ts from "typescript";
 import * as Lint from "tslint";
 import { analyze, ParseError } from "../analysis";
 import { Column } from "../analysis/params";
-import {
-  DatabaseSchema,
-  SchemaDefinition,
-  TableDefinition
-} from "../schema/schema";
+import { DatabaseSchema } from "../schema/schema";
 
 const OPTION_PATH_TO_SCHEMA_JSON = "path-to-schema-json";
 const OPTION_DEFAULT_SCHEMA_NAME = "default-schema-name";

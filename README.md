@@ -33,10 +33,6 @@ yarn test:rules
 
 ## TODO
 
-- Generate database schema JSON file
-
-  https://github.com/SweetIQ/schemats/blob/7c3d3e16b5d507b4d9bd246794e7463b05d20e75/src/schemaPostgres.ts#L17-L93
-
 - Generate and check for types returned by query.
 
   ```ts
