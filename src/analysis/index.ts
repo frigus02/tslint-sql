@@ -12,7 +12,12 @@ import {
   getParamMapForUpdate,
   Column
 } from "./params";
-import { notSupported } from "./utils";
+import { notSupported, Warning } from "./utils";
+
+export interface Analysis {
+  warnings: Warning[];
+  parameters: Map<number, Column>;
+}
 
 export class ParseError extends Error {
   public cursorPosition: number;
@@ -23,24 +28,31 @@ export class ParseError extends Error {
   }
 }
 
-export const analyze = (query: string): Map<number, Column> => {
+export const analyze = (query: string): Analysis => {
+  const warnings: Warning[] = [];
   const result = parse(query);
   if (result.error) {
     throw new ParseError(result.error);
   } else if (result.query) {
     const stmt = result.query[0];
+    let parameters;
     if (isPgUpdateStmt(stmt)) {
-      return getParamMapForUpdate(stmt);
+      parameters = getParamMapForUpdate(stmt, warnings);
     } else if (isPgInsertStmt(stmt)) {
-      return getParamMapForInsert(stmt);
+      parameters = getParamMapForInsert(stmt, warnings);
     } else if (isPgSelectStmt(stmt)) {
-      return getParamMapForSelect(stmt);
+      parameters = getParamMapForSelect(stmt, warnings);
     } else if (isPgDeleteStmt(stmt)) {
-      return getParamMapForDelete(stmt);
+      parameters = getParamMapForDelete(stmt, warnings);
     } else {
-      notSupported("statement", stmt);
-      return new Map<number, Column>();
+      warnings.push(notSupported("statement", stmt));
+      parameters = new Map<number, Column>();
     }
+
+    return {
+      warnings,
+      parameters
+    };
   } else {
     throw new Error("Got no result");
   }

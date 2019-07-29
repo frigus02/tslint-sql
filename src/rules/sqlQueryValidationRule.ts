@@ -3,7 +3,7 @@ import * as ts from "typescript";
 import * as Lint from "tslint";
 import { analyze, ParseError } from "../analysis";
 import { Column } from "../analysis/params";
-import { DatabaseSchema } from "../schema/schema";
+import { DatabaseSchema, ColumnDefinition } from "../schema/schema";
 
 const OPTION_PATH_TO_SCHEMA_JSON = "path-to-schema-json";
 const OPTION_DEFAULT_SCHEMA_NAME = "default-schema-name";
@@ -155,7 +155,28 @@ function readSchemaJson(path: string): DatabaseSchema {
 }
 
 function stringifyColumn(column: Column): string {
-  return [column.schema, column.table, column.column].filter(x => x).join(".");
+  return [
+    column.schema,
+    column.table,
+    column.column,
+    column.jsonPath && column.jsonPath.path
+  ]
+    .filter(x => x)
+    .join(".");
+}
+
+function getExpectedType(
+  column: Column,
+  schemaJson: DatabaseSchema,
+  defaultSchemaName: string
+) {
+  const schema = column.schema || defaultSchemaName;
+  const dbSchema = schemaJson[schema];
+  const dbTable = dbSchema && dbSchema[column.table];
+  const dbColumn = dbTable && dbTable[column.column];
+  if (dbColumn) {
+    return column.jsonPath && column.jsonPath.isText ? "string" : dbColumn.type;
+  }
 }
 
 function walk(ctx: Lint.WalkContext<Options>, program: ts.Program): void {
@@ -211,25 +232,29 @@ function walk(ctx: Lint.WalkContext<Options>, program: ts.Program): void {
         }
       }
 
-      for (const [index, column] of analysis.entries()) {
-        const actualType = types[index - 1];
+      for (const { type, what, node } of analysis.warnings) {
+        console.warn(type, what, JSON.stringify(node));
+      }
 
-        const schema = column.schema || ctx.options.defaultSchemaName;
-        const dbSchema = schemaJson[schema];
-        const dbTable = dbSchema && dbSchema[column.table];
-        const expectedType = dbTable && dbTable[column.column];
+      for (const [index, column] of analysis.parameters.entries()) {
+        const actualType = types[index - 1];
+        const expectedType = getExpectedType(
+          column,
+          schemaJson,
+          ctx.options.defaultSchemaName
+        );
 
         if (!expectedType) {
           ctx.addFailureAtNode(
             template.expressions[index - 1].expression,
             Rule.FAILURE_STRING_TYPE_MISSING(stringifyColumn(column))
           );
-        } else if (expectedType.type !== actualType) {
+        } else if (expectedType !== actualType) {
           ctx.addFailureAtNode(
             template.expressions[index - 1].expression,
             Rule.FAILURE_STRING_TYPE_MISMATCH(
               stringifyColumn(column),
-              expectedType.type,
+              expectedType,
               actualType
             )
           );

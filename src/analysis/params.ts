@@ -4,11 +4,13 @@ import {
   PgDeleteStmt,
   PgInsertStmt,
   PgNode,
+  PgRangeVar,
   PgSelectStmt,
   PgUpdateStmt,
-  PgRangeVar
+  PgA_Expr
 } from "pg-query-native";
 import {
+  isPgA_Const,
   isPgA_Expr,
   isPgBoolExpr,
   isPgColumnRef,
@@ -20,9 +22,11 @@ import {
   isPgResTarget,
   isPgSelectStmt,
   isPgString,
-  isPgSubLink
+  isPgSubLink,
+  isPgInteger
 } from "../gen/pg-type-guards";
-import { assignMap, notSupported } from "./utils";
+import { assignMap, notSupported, other, Warning } from "./utils";
+import { isString } from "util";
 
 type Alias = string;
 
@@ -35,18 +39,27 @@ export interface Column {
   schema?: string;
   table: string;
   column: string;
+  jsonPath?: {
+    path: string | number;
+    isText: boolean;
+  };
 }
+
+const COMPARISON_OPERATORS = ["<", ">", "<=", ">=", "=", "<>"];
+const JSON_OPERATORS = ["->", "->>", "#>", "#>>"];
+const JSON_OPERATORS_RETURNING_TEXT = ["->>", "#>>"];
 
 const getColumn = (
   columnRef: PgColumnRef,
-  relations: Map<Alias, Relation>
+  relations: Map<Alias, Relation>,
+  warnings: Warning[]
 ): Column => {
   if (columnRef.ColumnRef.fields!.length === 0) {
     throw new Error(`ColumnRef has no fields: ${JSON.stringify(columnRef)}`);
   }
 
   if (columnRef.ColumnRef.fields!.length > 2) {
-    console.warn("ColumnRef has more then 2 fields", columnRef);
+    warnings.push(other("ColumnRef has more then 2 fields", columnRef));
   }
 
   const getField = (field: PgNode) => {
@@ -109,9 +122,20 @@ const getRelationsForFromClause = (fromClause: PgNode[]) => {
   return relations;
 };
 
+const getOperator = (expr: PgA_Expr) => {
+  const name = expr.A_Expr.name;
+  if (name && isPgNodeArray(name)) {
+    const first = name[0];
+    if (first && isPgString(first)) {
+      return first.String.str;
+    }
+  }
+};
+
 const getParamMapForWhereClause = (
   whereClause: PgNode,
-  relations: Map<Alias, Relation>
+  relations: Map<Alias, Relation>,
+  warnings: Warning[]
 ) => {
   const params = new Map<number, Column>();
   if (isPgA_Expr(whereClause)) {
@@ -120,30 +144,52 @@ const getParamMapForWhereClause = (
       case PgA_Expr_Kind.AEXPR_IN:
         if (isPgNodeArray(expr.rexpr!)) {
           if (isPgColumnRef(expr.lexpr!)) {
-            const column = getColumn(expr.lexpr, relations);
+            const column = getColumn(expr.lexpr, relations, warnings);
             for (const field of expr.rexpr) {
               if (isPgParamRef(field)) {
                 params.set(field.ParamRef.number, column);
               }
             }
           } else {
-            notSupported("where clause", whereClause);
+            warnings.push(notSupported("where clause", whereClause));
           }
         } else {
-          notSupported("where clause", whereClause);
+          warnings.push(notSupported("where clause", whereClause));
         }
         break;
       case PgA_Expr_Kind.AEXPR_OP:
       case PgA_Expr_Kind.AEXPR_OP_ANY:
       case PgA_Expr_Kind.AEXPR_OP_ALL:
-        if (isPgParamRef(expr.rexpr!)) {
+        const operator = getOperator(whereClause);
+        if (!operator || !COMPARISON_OPERATORS.includes(operator)) {
+          warnings.push(notSupported("where clause", whereClause));
+        } else if (isPgParamRef(expr.rexpr!)) {
           if (isPgColumnRef(expr.lexpr!)) {
             params.set(
               expr.rexpr.ParamRef.number,
-              getColumn(expr.lexpr, relations)
+              getColumn(expr.lexpr, relations, warnings)
             );
+          } else if (
+            isPgA_Expr(expr.lexpr!) &&
+            JSON_OPERATORS.includes(getOperator(expr.lexpr) || "") &&
+            isPgColumnRef(expr.lexpr.A_Expr.lexpr!) &&
+            isPgA_Const(expr.lexpr.A_Expr.rexpr!)
+          ) {
+            const operator = getOperator(expr.lexpr)!;
+            const pathVal = expr.lexpr.A_Expr.rexpr.A_Const.val;
+            params.set(expr.rexpr.ParamRef.number, {
+              ...getColumn(expr.lexpr.A_Expr.lexpr, relations, warnings),
+              jsonPath: {
+                path: isPgInteger(pathVal)
+                  ? pathVal.Integer.ival
+                  : isPgString(pathVal)
+                  ? pathVal.String.str!
+                  : "<UNKNOWN>",
+                isText: JSON_OPERATORS_RETURNING_TEXT.includes(operator)
+              }
+            });
           } else {
-            notSupported("where clause", whereClause);
+            warnings.push(notSupported("where clause", whereClause));
           }
         } else if (
           isPgSubLink(expr.rexpr!) &&
@@ -152,28 +198,35 @@ const getParamMapForWhereClause = (
         ) {
           assignMap(
             params,
-            getParamMapForSelect(expr.rexpr.SubLink.subselect, relations)
+            getParamMapForSelect(
+              expr.rexpr.SubLink.subselect,
+              warnings,
+              relations
+            )
           );
-        } else if (!isPgColumnRef(expr.rexpr!)) {
-          notSupported("where clause", whereClause);
+        } else if (!isPgColumnRef(expr.rexpr!) && !isPgA_Const(expr.rexpr!)) {
+          warnings.push(notSupported("where clause", whereClause));
         }
         break;
       default:
-        notSupported("where clause", whereClause);
+        warnings.push(notSupported("where clause", whereClause));
     }
   } else if (isPgBoolExpr(whereClause)) {
     const expr = whereClause.BoolExpr;
     for (const arg of expr.args!) {
-      assignMap(params, getParamMapForWhereClause(arg, relations));
+      assignMap(params, getParamMapForWhereClause(arg, relations, warnings));
     }
   } else if (!isPgNullTest(whereClause)) {
-    notSupported("where clause", whereClause);
+    warnings.push(notSupported("where clause", whereClause));
   }
 
   return params;
 };
 
-export const getParamMapForUpdate = (stmt: PgUpdateStmt) => {
+export const getParamMapForUpdate = (
+  stmt: PgUpdateStmt,
+  warnings: Warning[]
+) => {
   const params = new Map<number, Column>();
 
   const mainRelation = getRelation(stmt.UpdateStmt.relation!);
@@ -186,7 +239,7 @@ export const getParamMapForUpdate = (stmt: PgUpdateStmt) => {
         });
       }
     } else {
-      console.warn("Target is not a ResTarget", target);
+      warnings.push(other("Target is not a ResTarget", target));
     }
   }
 
@@ -201,14 +254,21 @@ export const getParamMapForUpdate = (stmt: PgUpdateStmt) => {
 
     assignMap(
       params,
-      getParamMapForWhereClause(stmt.UpdateStmt.whereClause, relations)
+      getParamMapForWhereClause(
+        stmt.UpdateStmt.whereClause,
+        relations,
+        warnings
+      )
     );
   }
 
   return params;
 };
 
-export const getParamMapForInsert = (stmt: PgInsertStmt) => {
+export const getParamMapForInsert = (
+  stmt: PgInsertStmt,
+  warnings: Warning[]
+) => {
   const params = new Map<number, Column>();
   const mainRelation = getRelation(stmt.InsertStmt.relation!);
 
@@ -226,13 +286,15 @@ export const getParamMapForInsert = (stmt: PgInsertStmt) => {
                 column: column.ResTarget.name!
               });
             } else {
-              notSupported("colum type in select clause", column);
+              warnings.push(
+                notSupported("colum type in select clause", column)
+              );
             }
           }
         }
       }
     } else {
-      notSupported("select clause", select);
+      warnings.push(notSupported("select clause", select));
     }
   }
 
@@ -241,6 +303,7 @@ export const getParamMapForInsert = (stmt: PgInsertStmt) => {
 
 export const getParamMapForSelect = (
   stmt: PgSelectStmt,
+  warnings: Warning[],
   parentRelations?: Map<Alias, Relation>
 ) => {
   const params = new Map<number, Column>();
@@ -256,21 +319,32 @@ export const getParamMapForSelect = (
   if (stmt.SelectStmt.whereClause) {
     assignMap(
       params,
-      getParamMapForWhereClause(stmt.SelectStmt.whereClause, relations)
+      getParamMapForWhereClause(
+        stmt.SelectStmt.whereClause,
+        relations,
+        warnings
+      )
     );
   }
 
   return params;
 };
 
-export const getParamMapForDelete = (stmt: PgDeleteStmt) => {
+export const getParamMapForDelete = (
+  stmt: PgDeleteStmt,
+  warnings: Warning[]
+) => {
   const params = new Map<number, Column>();
 
   if (stmt.DeleteStmt.whereClause) {
     const relations = getRelations(stmt.DeleteStmt.relation!);
     assignMap(
       params,
-      getParamMapForWhereClause(stmt.DeleteStmt.whereClause, relations)
+      getParamMapForWhereClause(
+        stmt.DeleteStmt.whereClause,
+        relations,
+        warnings
+      )
     );
   }
 

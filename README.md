@@ -71,3 +71,5 @@ yarn test:rules
       user_id = ${userId}
   `;
   ```
+
+- Check existance of all columns found in query?

@@ -13,5 +13,20 @@ export const assignMap = <K, V>(
   }
 };
 
-export const notSupported = (what: string, node?: PgNode) =>
-  console.warn(`${what} not supported`, node);
+export interface Warning {
+  type: "not_supported" | "other";
+  what: string;
+  node?: PgNode;
+}
+
+export const notSupported = (what: string, node?: PgNode): Warning => ({
+  type: "not_supported",
+  what,
+  node
+});
+
+export const other = (what: string, node?: PgNode): Warning => ({
+  type: "other",
+  what,
+  node
+});
