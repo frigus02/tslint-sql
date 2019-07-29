@@ -1,6 +1,4 @@
-import * as PgPromise from "pg-promise";
-
-const pgp = PgPromise();
+import { Client } from "pg";
 
 const sql = (strings: TemplateStringsArray, ...values: any[]) => ({
   text: String.raw(strings, ...values.map((_, i) => `$${i + 1}`)),
@@ -37,10 +35,11 @@ interface SchemaEnums {
   [enumName: string]: any[] | undefined;
 }
 
-export const generateSchema = async (connectionString: string) => {
-  const db = pgp(connectionString);
-  const tables = await getTables(db);
-  const enums = await getEnums(db);
+export const generateSchema = async () => {
+  const client = new Client();
+  await client.connect();
+  const tables = await getTables(client);
+  const enums = await getEnums(client);
 
   const result: DatabaseSchema = {};
 
@@ -50,12 +49,14 @@ export const generateSchema = async (connectionString: string) => {
     }
 
     result[schema]![table] = await getTableDefinition(
-      db,
+      client,
       table,
       schema,
       enums[schema] || {}
     );
   }
+
+  await client.end();
 
   return result;
 };
@@ -129,10 +130,8 @@ const mapPostgresToTypeScriptType = (
   }
 };
 
-const getTables = async (
-  db: PgPromise.IDatabase<unknown>
-): Promise<Table[]> => {
-  return await db.any<Table>(
+const getTables = async (db: Client): Promise<Table[]> => {
+  const res = await db.query(
     sql`
       SELECT
         table_name AS table,
@@ -144,12 +143,11 @@ const getTables = async (
         table_schema
     `
   );
+  return res.rows;
 };
 
-const getEnums = async (db: PgPromise.IDatabase<unknown>): Promise<Enums> => {
-  type T = { schema: string; name: string; value: any };
-  const enums: Enums = {};
-  await db.each<T>(
+const getEnums = async (db: Client): Promise<Enums> => {
+  const res = await db.query(
     sql`
       SELECT
         n.nspname AS schema,
@@ -162,32 +160,32 @@ const getEnums = async (db: PgPromise.IDatabase<unknown>): Promise<Enums> => {
       ORDER BY
         t.typname ASC,
         e.enumlabel ASC
-    `,
-    null,
-    ({ schema, name, value }: T) => {
-      if (!enums[schema]) {
-        enums[schema] = {};
-      }
-
-      if (!enums[schema]![name]) {
-        enums[schema]![name] = [];
-      }
-
-      enums[schema]![name]!.push(value);
-    }
+    `
   );
+
+  const enums: Enums = {};
+  for (const { schema, name, value } of res.rows) {
+    if (!enums[schema]) {
+      enums[schema] = {};
+    }
+
+    if (!enums[schema]![name]) {
+      enums[schema]![name] = [];
+    }
+
+    enums[schema]![name]!.push(value);
+  }
+
   return enums;
 };
 
 const getTableDefinition = async (
-  db: PgPromise.IDatabase<unknown>,
+  db: Client,
   table: string,
   schema: string,
   enumTypes: SchemaEnums
 ): Promise<TableDefinition> => {
-  const tableDefinition: TableDefinition = {};
-  type T = { column_name: string; udt_name: string; is_nullable: string };
-  await db.each<T>(
+  const res = await db.query(
     sql`
       SELECT
         column_name,
@@ -198,14 +196,16 @@ const getTableDefinition = async (
       WHERE
         table_name = ${table}
         AND table_schema = ${schema}
-    `,
-    null,
-    (schemaItem: T) => {
-      tableDefinition[schemaItem.column_name] = {
-        type: mapPostgresToTypeScriptType(schemaItem.udt_name, enumTypes),
-        nullable: schemaItem.is_nullable === "YES"
-      };
-    }
+    `
   );
+
+  const tableDefinition: TableDefinition = {};
+  for (const row of res.rows) {
+    tableDefinition[row.column_name] = {
+      type: mapPostgresToTypeScriptType(row.udt_name, enumTypes),
+      nullable: row.is_nullable === "YES"
+    };
+  }
+
   return tableDefinition;
 };
