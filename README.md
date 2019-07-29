@@ -25,7 +25,10 @@ yarn compile --watch
 
 ```sh
 # Run query analysis on some test queries
-node build/index.js
+node test/analysis/index.js
+
+# Generate schema from database
+node build/schema/index.js test/rules/sql-query-validation/db-schema.json public
 
 # Test TSLint rule
 yarn test:rules

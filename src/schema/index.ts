@@ -4,20 +4,23 @@ import { generateSchema } from "./schema";
 
 const writeFile = promisify(writeFileCallback);
 
-export const updateFile = async (filePath: string) => {
-  const schema = await generateSchema();
+export const updateFile = async (filePath: string, schemaNames: string[]) => {
+  const schema = await generateSchema(schemaNames);
   await writeFile(filePath, JSON.stringify(schema, null, 4), "utf8");
 };
 
 if (!module.parent) {
   const main = async () => {
     const args = process.argv.slice(2);
-    if (args.length !== 1) {
-      throw new Error("Please provide 1 positional arguments: filePath");
+    if (args.length < 1) {
+      console.log(
+        `Usage: ${process.argv[0]} ${process.argv[1]} OUT_FILE [SCHEMA_NAME...]`
+      );
+      process.exit(1);
     }
 
-    const [filePath] = args;
-    await updateFile(filePath);
+    const [filePath, ...schemaNames] = args;
+    await updateFile(filePath, schemaNames);
   };
 
   main().catch(err => {

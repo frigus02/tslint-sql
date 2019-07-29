@@ -35,7 +35,7 @@ interface SchemaEnums {
   [enumName: string]: any[] | undefined;
 }
 
-export const generateSchema = async () => {
+export const generateSchema = async (schemaNames?: string[]) => {
   const client = new Client();
   await client.connect();
   const tables = await getTables(client);
@@ -44,6 +44,14 @@ export const generateSchema = async () => {
   const result: DatabaseSchema = {};
 
   for (const { table, schema } of tables) {
+    if (
+      schemaNames &&
+      schemaNames.length > 0 &&
+      !schemaNames.includes(schema)
+    ) {
+      continue;
+    }
+
     if (!result[schema]) {
       result[schema] = {};
     }

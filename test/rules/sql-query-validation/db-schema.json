@@ -1,18 +1,96 @@
 {
-  "public": {
-    "payments": {
-      "payment_id": "string",
-      "user_id": "number",
-      "amount": "number",
-      "description": "string",
-      "status": "string",
-      "created_at": "Date",
-      "updated_at": "Date"
-    },
-    "users": {
-      "user_id": "number",
-      "name": "string",
-      "details": "object"
+    "public": {
+        "orders": {
+            "order_id": {
+                "type": "number",
+                "nullable": false
+            },
+            "user_id": {
+                "type": "number",
+                "nullable": false
+            },
+            "notes": {
+                "type": "string",
+                "nullable": false
+            },
+            "status": {
+                "type": "created | packaged | received | returned | shipped",
+                "nullable": false
+            },
+            "package_data": {
+                "type": "Object",
+                "nullable": true
+            },
+            "shipment_data": {
+                "type": "Object",
+                "nullable": true
+            },
+            "created_at": {
+                "type": "Date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "Date",
+                "nullable": false
+            }
+        },
+        "products": {
+            "product_id": {
+                "type": "number",
+                "nullable": false
+            },
+            "name": {
+                "type": "string",
+                "nullable": false
+            },
+            "category": {
+                "type": "Fruit | Sweets | Vegetables",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "Date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "Date",
+                "nullable": false
+            }
+        },
+        "users": {
+            "user_id": {
+                "type": "number",
+                "nullable": false
+            },
+            "first_name": {
+                "type": "string",
+                "nullable": false
+            },
+            "last_name": {
+                "type": "string",
+                "nullable": false
+            },
+            "created_at": {
+                "type": "Date",
+                "nullable": false
+            },
+            "updated_at": {
+                "type": "Date",
+                "nullable": false
+            }
+        },
+        "line_items": {
+            "line_item_id": {
+                "type": "number",
+                "nullable": false
+            },
+            "order_id": {
+                "type": "number",
+                "nullable": false
+            },
+            "product_id": {
+                "type": "number",
+                "nullable": false
+            }
+        }
     }
-  }
 }

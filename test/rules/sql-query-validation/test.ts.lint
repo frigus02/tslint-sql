@@ -13,88 +13,85 @@ export const sql = (name: string) => (
   values
 });
 
-export const createPayment = (
-  paymentId: string,
+export const createOrder = (
   userId: string,
-  amount: number,
-  description: string
-) => sql("create-payment")`
-  INSERT INTO payments(
-    payment_id,
+  notes: string?
+) => sql("create-order")`
+  INSERT INTO orders(
     user_id,
-    amount,
-    description,
+    notes,
+    status,
     created_at,
     updated_at
   ) VALUES(
-    ${paymentId},
     ${userId},
-      ~~~~~~   [Types: Column payments.user_id is type number but got type string]
-    ${amount},
-    ${description},
+      ~~~~~~   [Types: Column orders.user_id is type number but got type string]
+    ${notes},
+      ~~~~~   [Types: Column orders.notes is type string but got type string | null]
+    'created',
     NOW(),
     NOW()
   )
   RETURNING *
 `;
 
-export const updatePaymentDescription = (
-  paymentId: string,
-  description: string
-) => sql("update-payment-description")`
+export const updateOrderStatus = (
+  orderId: number,
+  newStatus: string
+) => sql("update-order-status")`
   UPDATE
-    payments
+    orders
   SET
-    description = ${description},
+    status = ${newStatus},
+               ~~~~~~~~~   [Types: Column orders.status is type created | packaged | received | returned | shipped but got type string]
     updated_at = ${new Date().toISOString()}
-                   ~~~~~~~~~~~~~~~~~~~~~~~~  [Types: Column payments.updated_at is type Date but got type string]
+                   ~~~~~~~~~~~~~~~~~~~~~~~~  [Types: Column orders.updated_at is type Date but got type string]
   WHERE
-    payment_id = ${paymentId}
+    order_id = ${orderId}
 `;
 
-export const getPayment = (paymentId: string) => sql("get-payment")`
-  SELECT * FROM payments WHERE payment_id = ${paymentId}
+export const getOrder = (orderId: number) => sql("get-order")`
+  SELECT * FROM orders WHERE order_id = ${orderId}
 `;
 
-export const getPaymentView = (paymentId: string, userId: string) => sql(
-  "get-payment-view"
+export const getOutstandingOrdersForUser = (orderId: number, userId: string) => sql(
+  "get-outstanding-orders-for-user"
 )`
   SELECT
-    p.payment_id,
-    p.description,
-    p.created_at AS payment_created_at,
-    p.amount,
+    o.order_id,
+    o.notes,
+    o.created_at AS order_created_at,
+    o.status,
     u.user_id,
-    u.name
+    u.first_name,
+    u.last_name
   FROM
-    payments p
-    LEFT JOIN users u ON p.user_id = u.user_id
+    orders o
+    LEFT JOIN users u ON o.user_id = u.user_id
   WHERE
-    p.payment_id = ${paymentId}
-    AND p.user_id = ${userId}
-                      ~~~~~~  [Types: Column payments.user_id is type number but got type string]
-    AND p.status NOT IN ('cancelled_by_user', ${"cancelled_by_us"})
-                                                ~~~~~~~~~~~~~~~~~   [Types: Column payments.status is type string but got type "cancelled_by_us"]
+    o.order_id = ${orderId}
+    AND o.user_id = ${userId}
+                      ~~~~~~  [Types: Column orders.user_id is type number but got type string]
+    AND o.status IN ('created', ${"packaged"}, 'shipped')
+                                  ~~~~~~~~~~    [Types: Column orders.status is type created | packaged | received | returned | shipped but got type "packaged"]
 `;
 
-export const getUserByMetadata = (userId: string, metadata: string) => sql(
-  "get-user-by-metadata"
+export const getOrdersByShippingCompany = (company: string) => sql(
+  "get-orders-by-shipping-company"
 )`
   SELECT
     user_id,
     name
   FROM
-    beneficiaries
+    orders
   WHERE
-    user_id = ${userId}
-                ~~~~~~  [Types: Cannot find type for column beneficiaries.user_id in schema]
+    status >= 'shipped'
   AND
-    details ->> 'metadata' = ${metadata}
+    shipmentdata ->> 'company' = ${company}
+                                   ~~~~~~~  [Types: Cannot find type for column orders.shipmentdata in schema]
 `;
 
-export const deletePayment = (userId: string, paymentId: string) => sql(
-  "delete-payment"
-)`
-  DELETE FROM payments WHERE user_id = ${userId} AND payment_id = ${paymentId}
-                                         ~~~~~~                                [Types: Column payments.user_id is type number but got type string]
+export const deleteProduct = (productId: string) => sql("delete-product")`
+  DELETE FROM products WHERE product_id = ${productId}
+                                            ~~~~~~~~~                      [Types: Column products.product_id is type number but got type string]
 `;
