@@ -2,6 +2,7 @@ const fs = require("fs");
 const { promisify } = require("util");
 const outdent = require("outdent");
 const indentString = require("indent-string");
+const mkdir = promisify(fs.mkdir);
 const writeFile = promisify(fs.writeFile);
 
 const typeMap = require("./types.json");
@@ -107,11 +108,9 @@ const generateTypings = async () => {
     }
   `;
 
-  await writeFile(
-    `${__dirname}/../typings/pg-query-native/index.d.ts`,
-    result,
-    "utf8"
-  );
+  const dir = `${__dirname}/../typings/pg-query-native`;
+  await mkdir(dir, { recursive: true });
+  await writeFile(`${dir}/index.d.ts`, result, "utf8");
 };
 
 const generateTypeGuards = async () => {
@@ -131,7 +130,9 @@ const generateTypeGuards = async () => {
     ${typeGuards}
   `;
 
-  await writeFile(`${__dirname}/../src/gen/pg-type-guards.ts`, result, "utf8");
+  const dir = `${__dirname}/../src/gen`;
+  await mkdir(dir, { recursive: true });
+  await writeFile(`${dir}/pg-type-guards.ts`, result, "utf8");
 };
 
 async function main() {
