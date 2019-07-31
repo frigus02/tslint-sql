@@ -35,7 +35,7 @@ interface Relation {
   table: string;
 }
 
-export interface Column {
+export interface Parameter {
   schema?: string;
   table: string;
   column: string;
@@ -53,7 +53,7 @@ const getColumn = (
   columnRef: PgColumnRef,
   relations: Map<Alias, Relation>,
   warnings: Warning[]
-): Column => {
+): Parameter => {
   if (columnRef.ColumnRef.fields!.length === 0) {
     throw new Error(`ColumnRef has no fields: ${JSON.stringify(columnRef)}`);
   }
@@ -137,7 +137,7 @@ const getParamMapForWhereClause = (
   relations: Map<Alias, Relation>,
   warnings: Warning[]
 ) => {
-  const params = new Map<number, Column>();
+  const params = new Map<number, Parameter>();
   if (isPgA_Expr(whereClause)) {
     const expr = whereClause.A_Expr;
     switch (expr.kind) {
@@ -227,7 +227,7 @@ export const getParamMapForUpdate = (
   stmt: PgUpdateStmt,
   warnings: Warning[]
 ) => {
-  const params = new Map<number, Column>();
+  const params = new Map<number, Parameter>();
 
   const mainRelation = getRelation(stmt.UpdateStmt.relation!);
   for (const target of stmt.UpdateStmt.targetList!) {
@@ -269,7 +269,7 @@ export const getParamMapForInsert = (
   stmt: PgInsertStmt,
   warnings: Warning[]
 ) => {
-  const params = new Map<number, Column>();
+  const params = new Map<number, Parameter>();
   const mainRelation = getRelation(stmt.InsertStmt.relation!);
 
   if (isPgSelectStmt(stmt.InsertStmt.selectStmt!)) {
@@ -306,7 +306,7 @@ export const getParamMapForSelect = (
   warnings: Warning[],
   parentRelations?: Map<Alias, Relation>
 ) => {
-  const params = new Map<number, Column>();
+  const params = new Map<number, Parameter>();
 
   const relations = new Map<Alias, Relation>();
   assignMap(
@@ -334,7 +334,7 @@ export const getParamMapForDelete = (
   stmt: PgDeleteStmt,
   warnings: Warning[]
 ) => {
-  const params = new Map<number, Column>();
+  const params = new Map<number, Parameter>();
 
   if (stmt.DeleteStmt.whereClause) {
     const relations = getRelations(stmt.DeleteStmt.relation!);

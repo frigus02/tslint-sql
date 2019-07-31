@@ -1,9 +1,17 @@
 import { readFileSync } from "fs";
 import * as ts from "typescript";
 import * as Lint from "tslint";
-import { analyze, ParseError } from "../analysis";
-import { Column } from "../analysis/params";
-import { DatabaseSchema, ColumnDefinition } from "../schema/schema";
+import { analyze, ParseError, Analysis } from "../analysis";
+import { Parameter } from "../analysis/params";
+import { parse as parseSchema } from "../schema/file";
+import { DatabaseSchema } from "../schema/generate";
+import { getExpectedType, stringify } from "./dbParameter";
+import {
+  getName,
+  getTemplateData,
+  templatePositionToFilePosition,
+  SqlTemplateData
+} from "./tsTemplate";
 
 const OPTION_PATH_TO_SCHEMA_JSON = "path-to-schema-json";
 const OPTION_DEFAULT_SCHEMA_NAME = "default-schema-name";
@@ -64,16 +72,20 @@ export class Rule extends Lint.Rules.TypedRule {
     return `Parse: ${message}`;
   }
 
-  public static FAILURE_STRING_TYPE_MISSING(column: string): string {
-    return `Types: Cannot find type for column ${column} in schema`;
+  public static FAILURE_STRING_TYPE_MISSING(parameter: Parameter): string {
+    return `Types: Cannot find type for parameter ${stringify(
+      parameter
+    )} in schema`;
   }
 
   public static FAILURE_STRING_TYPE_MISMATCH(
-    column: string,
+    parameter: Parameter,
     expectedType: string,
     actualType: string
   ): string {
-    return `Types: Column ${column} is type ${expectedType} but got type ${actualType}`;
+    return `Types: Parameter ${stringify(
+      parameter
+    )} is type ${expectedType} but got type ${actualType}`;
   }
 
   public applyWithProgram(
@@ -96,102 +108,78 @@ export class Rule extends Lint.Rules.TypedRule {
   }
 }
 
-function getName(expr: ts.LeftHandSideExpression) {
-  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
-    return expr.expression.text;
-  }
-}
-
-interface SqlTemplateData {
-  position: number;
-  text: string;
-  expressions: ReadonlyArray<SqlTemplateExpression>;
-}
-
-interface SqlTemplateExpression {
-  position: number;
-  width: number;
-  placeholderWidth: number;
-  expression: ts.Expression;
-}
-
-function getTemplate(
-  expr: ts.TemplateLiteral,
-  sourceFile: ts.SourceFile
-): SqlTemplateData | undefined {
-  if (ts.isTemplateExpression(expr)) {
-    const headText = expr.head.text;
-    const spanTexts = expr.templateSpans.map(
-      (span, i) => `$${i + 1}` + span.literal.text
-    );
-    return {
-      position: expr.getStart(sourceFile),
-      text: headText + spanTexts.join(""),
-      expressions: expr.templateSpans.map((span, i) => ({
-        position:
-          headText.length +
-          spanTexts.slice(0, i).reduce((acc, curr) => acc + curr.length, 0),
-        placeholderWidth: `$${i + 1}`.length,
-        width:
-          span.literal.getStart(sourceFile) -
-          span.expression.getStart(sourceFile) +
-          span.expression.getLeadingTriviaWidth(sourceFile) +
-          "${}".length,
-        expression: span.expression
-      }))
-    };
-  } else if (ts.isNoSubstitutionTemplateLiteral(expr)) {
-    return {
-      position: expr.getStart(sourceFile),
-      text: expr.text,
-      expressions: []
-    };
-  }
-}
-
-function readSchemaJson(path: string): DatabaseSchema {
-  const data = readFileSync(path, "utf8");
-  return JSON.parse(data);
-}
-
-function stringifyColumn(column: Column): string {
-  return [
-    column.schema,
-    column.table,
-    column.column,
-    column.jsonPath && column.jsonPath.path
-  ]
-    .filter(x => x)
-    .join(".");
-}
-
-function getExpectedType(
-  column: Column,
-  schemaJson: DatabaseSchema,
-  defaultSchemaName: string
-) {
-  const schema = column.schema || defaultSchemaName;
-  const dbSchema = schemaJson[schema];
-  const dbTable = dbSchema && dbSchema[column.table];
-  const dbColumn = dbTable && dbTable[column.column];
-  if (dbColumn) {
-    return column.jsonPath && column.jsonPath.isText ? "string" : dbColumn.type;
-  }
-}
-
-function walk(ctx: Lint.WalkContext<Options>, program: ts.Program): void {
-  const checker = program.getTypeChecker();
-
-  let schemaJson: DatabaseSchema;
+const loadSchema = (ctx: Lint.WalkContext<Options>) => {
   try {
-    schemaJson = readSchemaJson(ctx.options.pathToSchemaJson);
+    return parseSchema(readFileSync(ctx.options.pathToSchemaJson, "utf8"));
   } catch (e) {
-    return ctx.addFailure(
+    ctx.addFailure(
       0,
       0,
       Rule.FAILURE_STRING_SCHEMA_JSON(ctx.options.pathToSchemaJson, e.message)
     );
   }
+};
+
+const analyzeTemplate = (
+  ctx: Lint.WalkContext<Options>,
+  template: ts.TemplateLiteral,
+  templateData: SqlTemplateData
+) => {
+  try {
+    return analyze(templateData.text);
+  } catch (e) {
+    if (e instanceof ParseError) {
+      ctx.addFailureAt(
+        templatePositionToFilePosition(templateData, e.cursorPosition),
+        1,
+        Rule.FAILURE_STRING_PARSE(e.message)
+      );
+    } else {
+      ctx.addFailureAtNode(template, Rule.FAILURE_STRING_PARSE(e.message));
+    }
+  }
+};
+
+const printWarnings = (analysis: Analysis) => {
+  for (const { type, what, node } of analysis.warnings) {
+    console.warn(type, what, JSON.stringify(node));
+  }
+};
+
+const checkParameterType = (
+  ctx: Lint.WalkContext<Options>,
+  checker: ts.TypeChecker,
+  expression: ts.Expression,
+  schema: DatabaseSchema,
+  parameter: Parameter
+) => {
+  const actualType = checker.typeToString(
+    checker.getTypeAtLocation(expression)
+  );
+  const expectedType = getExpectedType(
+    parameter,
+    schema,
+    ctx.options.defaultSchemaName
+  );
+
+  if (!expectedType) {
+    ctx.addFailureAtNode(
+      expression,
+      Rule.FAILURE_STRING_TYPE_MISSING(parameter)
+    );
+  } else if (expectedType !== actualType) {
+    ctx.addFailureAtNode(
+      expression,
+      Rule.FAILURE_STRING_TYPE_MISMATCH(parameter, expectedType, actualType)
+    );
+  }
+};
+
+function walk(ctx: Lint.WalkContext<Options>, program: ts.Program): void {
+  const schemaJson = loadSchema(ctx);
+  if (!schemaJson) return;
+
+  const checker = program.getTypeChecker();
 
   return ts.forEachChild(ctx.sourceFile, cb);
 
@@ -200,65 +188,17 @@ function walk(ctx: Lint.WalkContext<Options>, program: ts.Program): void {
       const name = getName(node.tag);
       if (name !== "sql") return;
 
-      const template = getTemplate(node.template, ctx.sourceFile);
-      if (!template) return;
+      const templateData = getTemplateData(node.template, ctx.sourceFile);
+      if (!templateData) return;
 
-      const types = template.expressions.map(expr =>
-        checker.typeToString(checker.getTypeAtLocation(expr.expression))
-      );
+      const analysis = analyzeTemplate(ctx, node.template, templateData);
+      if (!analysis) return;
 
-      let analysis;
-      try {
-        analysis = analyze(template.text);
-      } catch (e) {
-        if (e instanceof ParseError) {
-          return ctx.addFailureAt(
-            template.position +
-              e.cursorPosition +
-              template.expressions
-                .filter(expr => expr.position < e.cursorPosition - 1)
-                .reduce(
-                  (acc, curr) => acc + curr.width - curr.placeholderWidth,
-                  0
-                ),
-            1,
-            Rule.FAILURE_STRING_PARSE(e.message)
-          );
-        } else {
-          return ctx.addFailureAtNode(
-            node.template,
-            Rule.FAILURE_STRING_PARSE(e.message)
-          );
-        }
-      }
+      printWarnings(analysis);
 
-      for (const { type, what, node } of analysis.warnings) {
-        console.warn(type, what, JSON.stringify(node));
-      }
-
-      for (const [index, column] of analysis.parameters.entries()) {
-        const actualType = types[index - 1];
-        const expectedType = getExpectedType(
-          column,
-          schemaJson,
-          ctx.options.defaultSchemaName
-        );
-
-        if (!expectedType) {
-          ctx.addFailureAtNode(
-            template.expressions[index - 1].expression,
-            Rule.FAILURE_STRING_TYPE_MISSING(stringifyColumn(column))
-          );
-        } else if (expectedType !== actualType) {
-          ctx.addFailureAtNode(
-            template.expressions[index - 1].expression,
-            Rule.FAILURE_STRING_TYPE_MISMATCH(
-              stringifyColumn(column),
-              expectedType,
-              actualType
-            )
-          );
-        }
+      for (const [index, parameter] of analysis.parameters.entries()) {
+        const expression = templateData.expressions[index - 1].expression;
+        checkParameterType(ctx, checker, expression, schemaJson!, parameter);
       }
 
       return;

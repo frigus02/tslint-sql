@@ -10,13 +10,13 @@ import {
   getParamMapForInsert,
   getParamMapForSelect,
   getParamMapForUpdate,
-  Column
+  Parameter
 } from "./params";
 import { notSupported, Warning } from "./utils";
 
 export interface Analysis {
   warnings: Warning[];
-  parameters: Map<number, Column>;
+  parameters: Map<number, Parameter>;
 }
 
 export class ParseError extends Error {
@@ -46,7 +46,7 @@ export const analyze = (query: string): Analysis => {
       parameters = getParamMapForDelete(stmt, warnings);
     } else {
       warnings.push(notSupported("statement", stmt));
-      parameters = new Map<number, Column>();
+      parameters = new Map<number, Parameter>();
     }
 
     return {

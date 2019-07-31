@@ -1,12 +1,9 @@
-import { writeFile as writeFileCallback } from "fs";
-import { promisify } from "util";
-import { generateSchema } from "./schema";
+import { generateSchema } from "./generate";
+import { write } from "./file";
 
-const writeFile = promisify(writeFileCallback);
-
-export const updateFile = async (filePath: string, schemaNames: string[]) => {
+const updateFile = async (filePath: string, schemaNames: string[]) => {
   const schema = await generateSchema(schemaNames);
-  await writeFile(filePath, JSON.stringify(schema, null, 4), "utf8");
+  await write(filePath, schema);
 };
 
 if (!module.parent) {

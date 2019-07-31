@@ -25,9 +25,9 @@ export const createOrder = (
     updated_at
   ) VALUES(
     ${userId},
-      ~~~~~~   [Types: Column orders.user_id is type number but got type string]
+      ~~~~~~   [Types: Parameter orders.user_id is type number but got type string]
     ${notes},
-      ~~~~~   [Types: Column orders.notes is type string but got type string | null]
+      ~~~~~   [Types: Parameter orders.notes is type string but got type string | null]
     'created',
     NOW(),
     NOW()
@@ -43,9 +43,9 @@ export const updateOrderStatus = (
     orders
   SET
     status = ${newStatus},
-               ~~~~~~~~~   [Types: Column orders.status is type created | packaged | received | returned | shipped but got type string]
+               ~~~~~~~~~   [Types: Parameter orders.status is type created | packaged | received | returned | shipped but got type string]
     updated_at = ${new Date().toISOString()}
-                   ~~~~~~~~~~~~~~~~~~~~~~~~  [Types: Column orders.updated_at is type Date but got type string]
+                   ~~~~~~~~~~~~~~~~~~~~~~~~  [Types: Parameter orders.updated_at is type Date but got type string]
   WHERE
     order_id = ${orderId}
 `;
@@ -71,9 +71,9 @@ export const getOutstandingOrdersForUser = (orderId: number, userId: string) => 
   WHERE
     o.order_id = ${orderId}
     AND o.userid = ${userId}
-                     ~~~~~~  [Types: Cannot find type for column orders.userid in schema]
+                     ~~~~~~  [Types: Cannot find type for parameter orders.userid in schema]
     AND o.status IN ('created', ${"packaged"}, 'shipped')
-                                  ~~~~~~~~~~    [Types: Column orders.status is type created | packaged | received | returned | shipped but got type "packaged"]
+                                  ~~~~~~~~~~    [Types: Parameter orders.status is type created | packaged | received | returned | shipped but got type "packaged"]
 `;
 
 export const geOrdersByStatus = (statuses: string[]) => sql(
@@ -85,7 +85,7 @@ export const geOrdersByStatus = (statuses: string[]) => sql(
     orders o
   WHERE
     status = ANY (${statuses})
-                    ~~~~~~~~   [Types: Column orders.status is type created | packaged | received | returned | shipped but got type string[]]
+                    ~~~~~~~~   [Types: Parameter orders.status is type created | packaged | received | returned | shipped but got type string[]]
 `;
 
 export const getOrdersByShippingCompany = (company: number) => sql(
@@ -100,10 +100,10 @@ export const getOrdersByShippingCompany = (company: number) => sql(
     status >= 'shipped'
   AND
     shipment_data ->> 'company' = ${company}
-                                    ~~~~~~~  [Types: Column orders.shipment_data.company is type string but got type number]
+                                    ~~~~~~~  [Types: Parameter orders.shipment_data.company is type string but got type number]
 `;
 
 export const deleteProduct = (productId: string) => sql("delete-product")`
   DELETE FROM products WHERE product_id = ${productId}
-                                            ~~~~~~~~~                      [Types: Column products.product_id is type number but got type string]
+                                            ~~~~~~~~~                      [Types: Parameter products.product_id is type number but got type string]
 `;
