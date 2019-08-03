@@ -15,7 +15,7 @@ CREATE TYPE product_category AS ENUM (
 CREATE TABLE products (
     product_id integer PRIMARY KEY,
     name text NOT NULL,
-    category product_category NOT NULL,
+    categories product_category[] NOT NULL,
     created_at timestamp NOT NULL,
     updated_at timestamp NOT NULL
 );

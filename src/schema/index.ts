@@ -1,9 +1,11 @@
-import { generateSchema } from "./generate";
+import { exportSchema } from "./db";
+import { mapSchemaToTypeScriptTypes } from "./ts";
 import { write } from "./file";
 
 const updateFile = async (filePath: string, schemaNames: string[]) => {
-  const schema = await generateSchema(schemaNames);
-  await write(filePath, schema);
+  const schema = await exportSchema(schemaNames);
+  const mappedSchema = mapSchemaToTypeScriptTypes(schema);
+  await write(filePath, mappedSchema);
 };
 
 if (!module.parent) {

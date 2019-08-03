@@ -1,96 +1,33 @@
 {
     "public": {
-        "orders": {
-            "order_id": {
-                "type": "number",
-                "nullable": false
-            },
-            "user_id": {
-                "type": "number",
-                "nullable": false
-            },
-            "notes": {
-                "type": "string",
-                "nullable": false
-            },
-            "status": {
-                "type": "created | packaged | received | returned | shipped",
-                "nullable": false
-            },
-            "package_data": {
-                "type": "Object",
-                "nullable": true
-            },
-            "shipment_data": {
-                "type": "Object",
-                "nullable": true
-            },
-            "created_at": {
-                "type": "Date",
-                "nullable": false
-            },
-            "updated_at": {
-                "type": "Date",
-                "nullable": false
-            }
-        },
         "products": {
-            "product_id": {
-                "type": "number",
-                "nullable": false
-            },
-            "name": {
-                "type": "string",
-                "nullable": false
-            },
-            "category": {
-                "type": "Fruit | Sweets | Vegetables",
-                "nullable": false
-            },
-            "created_at": {
-                "type": "Date",
-                "nullable": false
-            },
-            "updated_at": {
-                "type": "Date",
-                "nullable": false
-            }
+            "categories": "Array<\"Fruit\" | \"Sweets\" | \"Vegetables\">",
+            "created_at": "Date",
+            "name": "string",
+            "updated_at": "Date",
+            "product_id": "number"
         },
         "users": {
-            "user_id": {
-                "type": "number",
-                "nullable": false
-            },
-            "first_name": {
-                "type": "string",
-                "nullable": false
-            },
-            "last_name": {
-                "type": "string",
-                "nullable": false
-            },
-            "created_at": {
-                "type": "Date",
-                "nullable": false
-            },
-            "updated_at": {
-                "type": "Date",
-                "nullable": false
-            }
+            "updated_at": "Date",
+            "first_name": "string",
+            "user_id": "number",
+            "last_name": "string",
+            "created_at": "Date"
+        },
+        "orders": {
+            "shipment_data": "Object | null",
+            "notes": "string",
+            "order_id": "number",
+            "package_data": "Object | null",
+            "user_id": "number",
+            "updated_at": "Date",
+            "created_at": "Date",
+            "status": "\"created\" | \"packaged\" | \"received\" | \"returned\" | \"shipped\""
         },
         "line_items": {
-            "line_item_id": {
-                "type": "number",
-                "nullable": false
-            },
-            "order_id": {
-                "type": "number",
-                "nullable": false
-            },
-            "product_id": {
-                "type": "number",
-                "nullable": false
-            }
+            "product_id": "number",
+            "order_id": "number",
+            "line_item_id": "number"
         }
     }
 }

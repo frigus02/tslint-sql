@@ -1,5 +1,5 @@
 import { promises as fs } from "fs";
-import { DatabaseSchema } from "./generate";
+import { DatabaseSchema } from "./ts";
 
 export const parse = (json: string): DatabaseSchema => {
   return JSON.parse(json);
