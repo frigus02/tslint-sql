@@ -55,7 +55,7 @@ const getBaseType = (
   if (column.userDefined) {
     const values = enums[column.type];
     if (values) {
-      return values.map(v => `"${v}"`).join(" | ");
+      return values.map(v => JSON.stringify(v)).join(" | ");
     }
 
     console.warn(
