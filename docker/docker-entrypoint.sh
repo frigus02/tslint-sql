@@ -3,4 +3,4 @@ set -e
 
 yarn
 yarn generate
-yarn compile --watch
+exec yarn compile --watch
