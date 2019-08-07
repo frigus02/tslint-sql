@@ -4,14 +4,15 @@ import * as Lint from "tslint";
 import { analyze, ParseError, Analysis } from "../analysis";
 import { Parameter } from "../analysis/params";
 import { parse as parseSchema } from "../schema/file";
-import { DatabaseSchema } from "../schema/generate";
-import { getExpectedType, stringify } from "./dbParameter";
+import { DatabaseSchema, ColumnDefinition } from "../schema/ts";
+import { getParameterType, stringify } from "./dbParameter";
 import {
   getName,
   getTemplateData,
   templatePositionToFilePosition,
   SqlTemplateData
 } from "./tsTemplate";
+import { isAssignableTo } from "./tsTypeNode";
 
 const OPTION_PATH_TO_SCHEMA_JSON = "path-to-schema-json";
 const OPTION_DEFAULT_SCHEMA_NAME = "default-schema-name";
@@ -146,6 +147,22 @@ const printWarnings = (analysis: Analysis) => {
   }
 };
 
+const parseStringToTypeNode = (type: string): ts.TypeNode | undefined => {
+  try {
+    const sourceFile = ts.createSourceFile(
+      "tmp.ts",
+      `let _: ${type};`,
+      ts.ScriptTarget.Latest,
+      false,
+      ts.ScriptKind.TS
+    );
+    const statement = sourceFile.statements[0];
+    if (ts.isVariableStatement(statement)) {
+      return statement.declarationList.declarations[0].type;
+    }
+  } catch (e) {}
+};
+
 const checkParameterType = (
   ctx: Lint.WalkContext<Options>,
   checker: ts.TypeChecker,
@@ -153,24 +170,51 @@ const checkParameterType = (
   schema: DatabaseSchema,
   parameter: Parameter
 ) => {
-  const actualType = checker.typeToString(
-    checker.getTypeAtLocation(expression)
-  );
-  const expectedType = getExpectedType(
+  const parameterType = getParameterType(
     parameter,
     schema,
     ctx.options.defaultSchemaName
   );
-
-  if (!expectedType) {
-    ctx.addFailureAtNode(
+  if (!parameterType) {
+    return ctx.addFailureAtNode(
       expression,
       Rule.FAILURE_STRING_TYPE_MISSING(parameter)
     );
-  } else if (expectedType !== actualType) {
+  }
+
+  const parameterTypeNode = parseStringToTypeNode(parameterType);
+  if (!parameterTypeNode) {
+    return ctx.addFailureAtNode(
+      expression,
+      Rule.FAILURE_STRING_TYPE_MISSING(parameter)
+    );
+  }
+
+  const expressionType = checker.getTypeAtLocation(expression);
+  const expressionTypeNode = checker.typeToTypeNode(expressionType)!;
+
+  console.log("------------------------------");
+  console.log(
+    "expression",
+    expression.getFullText(ctx.sourceFile),
+    ":",
+    checker.typeToString(expressionType)
+  );
+  console.log("parameter", parameterType);
+
+  console.log(
+    "isAssignable",
+    isAssignableTo(expressionTypeNode, parameterTypeNode)
+  );
+
+  if (!isAssignableTo(expressionTypeNode, parameterTypeNode)) {
     ctx.addFailureAtNode(
       expression,
-      Rule.FAILURE_STRING_TYPE_MISMATCH(parameter, expectedType, actualType)
+      Rule.FAILURE_STRING_TYPE_MISMATCH(
+        parameter,
+        parameterType,
+        checker.typeToString(expressionType)
+      )
     );
   }
 };

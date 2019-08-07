@@ -12,7 +12,7 @@ export const stringify = (parameter: Parameter): string => {
     .join(".");
 };
 
-export const getExpectedType = (
+export const getParameterType = (
   parameter: Parameter,
   schemaJson: DatabaseSchema,
   defaultSchemaName: string

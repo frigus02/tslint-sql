@@ -43,7 +43,7 @@ export const updateOrderStatus = (
     orders
   SET
     status = ${newStatus},
-               ~~~~~~~~~   [Types: Parameter orders.status is type created | packaged | received | returned | shipped but got type string]
+               ~~~~~~~~~   [Types: Parameter orders.status is type "created" | "packaged" | "received" | "returned" | "shipped" but got type string]
     updated_at = ${new Date().toISOString()}
                    ~~~~~~~~~~~~~~~~~~~~~~~~  [Types: Parameter orders.updated_at is type Date but got type string]
   WHERE
@@ -73,7 +73,6 @@ export const getOutstandingOrdersForUser = (orderId: number, userId: string) => 
     AND o.userid = ${userId}
                      ~~~~~~  [Types: Cannot find type for parameter orders.userid in schema]
     AND o.status IN ('created', ${"packaged"}, 'shipped')
-                                  ~~~~~~~~~~    [Types: Parameter orders.status is type created | packaged | received | returned | shipped but got type "packaged"]
 `;
 
 export const geOrdersByStatus = (statuses: string[]) => sql(
@@ -85,7 +84,7 @@ export const geOrdersByStatus = (statuses: string[]) => sql(
     orders o
   WHERE
     status = ANY (${statuses})
-                    ~~~~~~~~   [Types: Parameter orders.status is type created | packaged | received | returned | shipped but got type string[]]
+                    ~~~~~~~~   [Types: Parameter orders.status is type "created" | "packaged" | "received" | "returned" | "shipped" but got type string[]]
 `;
 
 export const getOrdersByShippingCompany = (company: number) => sql(
@@ -100,7 +99,7 @@ export const getOrdersByShippingCompany = (company: number) => sql(
     status >= 'shipped'
   AND
     shipment_data ->> 'company' = ${company}
-                                    ~~~~~~~  [Types: Parameter orders.shipment_data.company is type string but got type number]
+                                    ~~~~~~~  [Types: Parameter orders.shipment_data.company is type string | null but got type number]
 `;
 
 export const deleteProduct = (productId: string) => sql("delete-product")`
